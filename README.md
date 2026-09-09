@@ -54,10 +54,16 @@ to je číslo z vety *„Skladom máme celkom **3 ks** knihy Dobrodružství Lut
 Arkwrighta (2005)."* Keď klesne **pod nastavený prah** (predvolene 3), pošle
 upozornenie.
 
-Číslo sa berie z `__NEXT_DATA__`:
-`props.pageProps.componentProps.data.variants.mother[selected].inStockCount`,
-odtiaľ aj názov, rok a najnižšia cena. Záloha je regex na tú vetu v HTML.
-Prah sa dá v appke meniť šípkami pre každý odkaz zvlášť.
+Rovnako ako pri restorio.sk (nižšie) sa dá nastaviť aj **cieľová cena** — appka
+upozorní aj vtedy, keď cena knihy klesne na túto hodnotu alebo pod ňu, nezávisle
+od prahu kusov. Obe podmienky sa dajú kombinovať alebo použiť len jednu z nich
+(cieľová cena je voliteľná, necháš ju prázdnu, ak ju nechceš sledovať).
+
+Číslo aj cena sa berú z `__NEXT_DATA__`:
+`props.pageProps.componentProps.data.variants.mother[selected].inStockCount`
+a `minPriceX100`, odtiaľ aj názov a rok. Záloha je regex na tú vetu v HTML.
+Prah kusov sa dá v appke meniť šípkami, cieľová cena kliknutím na jej riadok —
+pre každý odkaz zvlášť.
 
 Prvý odkaz (Arkwright, prah 3 ks) je predvyplnený — dá sa zmazať.
 

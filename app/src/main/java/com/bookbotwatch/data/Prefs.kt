@@ -144,7 +144,13 @@ class Prefs(context: Context) {
             val o = arr.optJSONObject(i) ?: continue
             val url = o.optString("url")
             if (url.isBlank()) continue
-            out.add(StockWatch(url, o.optInt("threshold", DEFAULT_STOCK_THRESHOLD)))
+            out.add(
+                StockWatch(
+                    url,
+                    o.optInt("threshold", DEFAULT_STOCK_THRESHOLD),
+                    if (o.isNull("price") || !o.has("price")) null else o.optInt("price")
+                )
+            )
         }
         return out
     }
@@ -155,6 +161,7 @@ class Prefs(context: Context) {
             arr.put(JSONObject().apply {
                 put("url", w.url)
                 put("threshold", w.threshold)
+                put("price", w.priceThresholdCents ?: JSONObject.NULL)
             })
         }
         sp.edit().putString("stock_watches", arr.toString()).putBoolean("stock_seeded", true).apply()
@@ -164,6 +171,11 @@ class Prefs(context: Context) {
     fun notifiedStock(): MutableMap<String, Int> = readIntMap("notified_stock")
 
     fun saveNotifiedStock(map: Map<String, Int>) = writeIntMap("notified_stock", map)
+
+    /** Ceny na bookbot.sk (strazeny sklad), pri ktorych sme uz upozornili. */
+    fun notifiedStockPrice(): MutableMap<String, Int> = readIntMap("notified_stock_price")
+
+    fun saveNotifiedStockPrice(map: Map<String, Int>) = writeIntMap("notified_stock_price", map)
 
     /**
      * Strazene odkazy na restorio.sk (pocet kusov aj cena).
@@ -245,11 +257,13 @@ class Prefs(context: Context) {
             stock.put(JSONObject().apply {
                 put("url", s.url)
                 put("threshold", s.threshold)
+                put("priceThreshold", s.priceThresholdCents ?: JSONObject.NULL)
                 put("title", s.title)
                 put("year", s.year)
                 put("count", s.count)
                 put("price", s.priceCents ?: JSONObject.NULL)
-                put("alert", s.alert)
+                put("stockAlert", s.stockAlert)
+                put("priceAlert", s.priceAlert)
                 put("error", s.error ?: JSONObject.NULL)
             })
         }
@@ -314,11 +328,14 @@ class Prefs(context: Context) {
                 StockRow(
                     url = o.optString("url"),
                     threshold = o.optInt("threshold", DEFAULT_STOCK_THRESHOLD),
+                    priceThresholdCents = if (o.isNull("priceThreshold") || !o.has("priceThreshold")) null
+                    else o.optInt("priceThreshold"),
                     title = o.optString("title"),
                     year = o.optString("year"),
                     count = o.optInt("count", -1),
                     priceCents = if (o.isNull("price")) null else o.optInt("price"),
-                    alert = o.optBoolean("alert"),
+                    stockAlert = o.optBoolean("stockAlert"),
+                    priceAlert = o.optBoolean("priceAlert"),
                     error = if (o.isNull("error")) null else o.optString("error")
                 )
             )
@@ -361,6 +378,7 @@ class Prefs(context: Context) {
             .remove("notified")
             .remove("baseline")
             .remove("notified_stock")
+            .remove("notified_stock_price")
             .remove("notified_restorio_stock")
             .remove("notified_restorio_price")
             .apply()

@@ -161,24 +161,31 @@ object Mailer {
 
     private fun stockHtml(alerts: List<StockRow>): String {
         val rows = alerts.joinToString("") { r ->
+            val status = buildString {
+                if (r.stockAlert) append("${r.count} ks (pod ${r.threshold})")
+                if (r.priceAlert) {
+                    if (isNotEmpty()) append(" • ")
+                    append("cena v cieli")
+                }
+            }
             """
             <tr>
               <td style="padding:8px 12px;border-bottom:1px solid #eee"><a href="${esc(r.url)}">${esc(r.label)}</a></td>
-              <td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:bold;color:#B3261E">${r.count} ks</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#666">pod ${r.threshold} ks</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:bold;color:#B3261E">$status</td>
               <td style="padding:8px 12px;border-bottom:1px solid #eee">${r.priceCents?.asEur() ?: "-"}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#666">${r.priceThresholdCents?.asEur() ?: "-"}</td>
             </tr>
             """.trimIndent()
         }
         return """
           <h2 style="margin:24px 0 4px">Dochádza skladom</h2>
-          <p style="margin:0 0 16px;color:#666">Počet kusov klesol pod nastavený prah.</p>
+          <p style="margin:0 0 16px;color:#666">Počet kusov klesol pod prah alebo cena dosiahla cieľ.</p>
           <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;min-width:420px">
             <tr style="background:#f5f5f5">
               <th align="left" style="padding:8px 12px">Kniha</th>
-              <th align="left" style="padding:8px 12px">Skladom</th>
-              <th align="left" style="padding:8px 12px">Prah</th>
-              <th align="left" style="padding:8px 12px">Cena od</th>
+              <th align="left" style="padding:8px 12px">Stav</th>
+              <th align="left" style="padding:8px 12px">Cena</th>
+              <th align="left" style="padding:8px 12px">Cieľová cena</th>
             </tr>
             $rows
           </table>

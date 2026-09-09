@@ -173,7 +173,8 @@ object PriceChecker {
         val watches = prefs.stockWatches()
         if (watches.isEmpty()) return emptyList<StockRow>() to emptyList()
 
-        val notified = prefs.notifiedStock()
+        val notifiedStock = prefs.notifiedStock()
+        val notifiedPrice = prefs.notifiedStockPrice()
         val rows = ArrayList<StockRow>(watches.size)
         val alerts = ArrayList<StockRow>()
 
@@ -183,32 +184,45 @@ object PriceChecker {
             } catch (e: Exception) {
                 val msg = e.message ?: e.javaClass.simpleName
                 problems.add("Sklad – ${shortUrl(w.url)}: $msg")
-                rows.add(StockRow(w.url, w.threshold, shortUrl(w.url), "", -1, null, false, msg))
+                rows.add(
+                    StockRow(w.url, w.threshold, w.priceThresholdCents, shortUrl(w.url), "", -1, null, false, false, msg)
+                )
                 continue
             }
 
-            val already = notified[w.url]
-            val alert = info.count < w.threshold && (already == null || info.count < already)
+            val alreadyStock = notifiedStock[w.url]
+            val stockAlert = info.count < w.threshold && (alreadyStock == null || info.count < alreadyStock)
+
+            val alreadyPrice = notifiedPrice[w.url]
+            val priceAlert = w.priceThresholdCents != null && info.priceCents != null &&
+                info.priceCents <= w.priceThresholdCents &&
+                (alreadyPrice == null || info.priceCents < alreadyPrice)
 
             val row = StockRow(
                 url = w.url,
                 threshold = w.threshold,
+                priceThresholdCents = w.priceThresholdCents,
                 title = info.title,
                 year = info.year,
                 count = info.count,
                 priceCents = info.priceCents,
-                alert = alert
+                stockAlert = stockAlert,
+                priceAlert = priceAlert
             )
             rows.add(row)
-            if (alert) {
-                alerts.add(row)
-                notified[w.url] = info.count
-            } else if (info.count >= w.threshold) {
-                notified.remove(w.url)
-            }
+            if (row.alert) alerts.add(row)
+
+            if (stockAlert) notifiedStock[w.url] = info.count
+            else if (info.count >= w.threshold) notifiedStock.remove(w.url)
+
+            if (priceAlert) notifiedPrice[w.url] = info.priceCents ?: 0
+            else if (w.priceThresholdCents == null ||
+                (info.priceCents != null && info.priceCents > w.priceThresholdCents)
+            ) notifiedPrice.remove(w.url)
         }
 
-        prefs.saveNotifiedStock(notified)
+        prefs.saveNotifiedStock(notifiedStock)
+        prefs.saveNotifiedStockPrice(notifiedPrice)
         return rows to alerts
     }
 

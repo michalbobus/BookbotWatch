@@ -94,7 +94,10 @@ object Notifier {
         ensureChannels(context)
 
         val lines = alerts.map { row ->
-            "${row.label}: skladom už len ${row.count} ks (prah ${row.threshold})"
+            val parts = mutableListOf<String>()
+            if (row.stockAlert) parts.add("skladom už len ${row.count} ks (prah ${row.threshold})")
+            if (row.priceAlert) parts.add("cena ${row.priceCents?.asEur() ?: "?"}")
+            "${row.label}: ${parts.joinToString(", ")}"
         }
         val title = if (alerts.size == 1) "Dochádza: ${alerts[0].title}"
         else "Dochádza ${alerts.size} kníh"

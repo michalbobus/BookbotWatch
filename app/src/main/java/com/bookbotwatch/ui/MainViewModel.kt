@@ -249,7 +249,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ------------------------------------------------- strazenie skladu
 
     /** Prijme aj plne URL, aj samotne "180963/b/22784943". */
-    fun addStockWatch(rawUrl: String, threshold: Int) {
+    fun addStockWatch(rawUrl: String, threshold: Int, priceText: String = "") {
         val url = normalizeBookUrl(rawUrl)
         if (url == null) {
             _state.value = _state.value.copy(
@@ -262,7 +262,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(toast = "Tento odkaz už je v zozname.")
             return
         }
-        val updated = current + StockWatch(url, threshold.coerceIn(1, 999))
+        val priceCents = priceText.trim().takeIf { it.isNotEmpty() }?.let { TxtParser.priceToCents(it) }
+        val updated = current + StockWatch(url, threshold.coerceIn(1, 999), priceCents)
         prefs.saveStockWatches(updated)
         _state.value = _state.value.copy(stockWatches = updated, toast = "Odkaz pridaný.")
     }
@@ -272,6 +273,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         prefs.saveStockWatches(updated)
         val notified = prefs.notifiedStock().apply { remove(url) }
         prefs.saveNotifiedStock(notified)
+        val notifiedPrice = prefs.notifiedStockPrice().apply { remove(url) }
+        prefs.saveNotifiedStockPrice(notifiedPrice)
         _state.value = _state.value.copy(stockWatches = updated, toast = "Odkaz odstránený.")
     }
 
@@ -283,6 +286,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Zmena prahu = nova situacia, nech to vie upozornit znova.
         val notified = prefs.notifiedStock().apply { remove(url) }
         prefs.saveNotifiedStock(notified)
+        _state.value = _state.value.copy(stockWatches = updated)
+    }
+
+    fun setStockPriceThreshold(url: String, priceText: String) {
+        val cents = priceText.trim().takeIf { it.isNotEmpty() }?.let { TxtParser.priceToCents(it) }
+        val updated = prefs.stockWatches().map {
+            if (it.url == url) it.copy(priceThresholdCents = cents) else it
+        }
+        prefs.saveStockWatches(updated)
+        val notifiedPrice = prefs.notifiedStockPrice().apply { remove(url) }
+        prefs.saveNotifiedStockPrice(notifiedPrice)
         _state.value = _state.value.copy(stockWatches = updated)
     }
 

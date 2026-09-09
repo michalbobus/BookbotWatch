@@ -45,11 +45,13 @@ data class CheckRow(
         get() = if (offer != null && refCents != null) offer.cents - refCents else null
 }
 
-/** Strazeny odkaz na konkretne vydanie - sleduje sa pocet kusov skladom. */
+/** Strazeny odkaz na konkretne vydanie - sleduje sa pocet kusov skladom aj cena. */
 data class StockWatch(
     val url: String,
     /** Upozorni, ked pocet kusov klesne POD tuto hodnotu. */
-    val threshold: Int
+    val threshold: Int,
+    /** Upozorni, ked cena klesne NA alebo POD tuto hodnotu. Null = cena sa nesleduje. */
+    val priceThresholdCents: Int? = null
 )
 
 /** Aktualny stav skladu vytiahnuty z detailu knihy. */
@@ -64,14 +66,17 @@ data class StockInfo(
 data class StockRow(
     val url: String,
     val threshold: Int,
+    val priceThresholdCents: Int?,
     val title: String,
     val year: String,
     /** -1 = nepodarilo sa zistit. */
     val count: Int,
     val priceCents: Int?,
-    val alert: Boolean,
+    val stockAlert: Boolean,
+    val priceAlert: Boolean,
     val error: String? = null
 ) {
+    val alert: Boolean get() = stockAlert || priceAlert
     val label: String get() = if (year.isBlank()) title else "$title ($year)"
 }
 

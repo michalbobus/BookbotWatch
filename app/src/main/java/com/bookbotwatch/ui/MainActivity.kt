@@ -145,8 +145,8 @@ fun AppScreen(vm: MainViewModel = viewModel()) {
     if (showAddStock) {
         AddStockDialog(
             onDismiss = { showAddStock = false },
-            onConfirm = { url, threshold ->
-                vm.addStockWatch(url, threshold)
+            onConfirm = { url, threshold, price ->
+                vm.addStockWatch(url, threshold, price)
                 showAddStock = false
             }
         )
@@ -322,7 +322,8 @@ fun AppScreen(vm: MainViewModel = viewModel()) {
             item {
                 SectionCard("Strážený sklad", Icons.Default.Inventory2) {
                     Text(
-                        "Sleduje počet kusov skladom na konkrétnom vydaní. Upozorní, keď klesne pod prah.",
+                        "Sleduje počet kusov skladom aj cenu na konkrétnom vydaní. " +
+                            "Upozorní, keď klesne pod prah kusov a/alebo cena klesne na cieľ.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -341,6 +342,7 @@ fun AppScreen(vm: MainViewModel = viewModel()) {
                                 result = state.report?.stockRows?.firstOrNull { it.url == watch.url },
                                 onOpen = { openUrl(watch.url) },
                                 onThreshold = { vm.setStockThreshold(watch.url, it) },
+                                onPriceThreshold = { vm.setStockPriceThreshold(watch.url, it) },
                                 onDelete = { vm.removeStockWatch(watch.url) }
                             )
                             Spacer(Modifier.height(8.dp))
@@ -663,9 +665,12 @@ private fun StockWatchRow(
     result: StockRow?,
     onOpen: () -> Unit,
     onThreshold: (Int) -> Unit,
+    onPriceThreshold: (String) -> Unit,
     onDelete: () -> Unit
 ) {
     val alert = result?.alert == true
+    var editingPrice by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -747,17 +752,61 @@ private fun StockWatchRow(
                     )
                 }
             }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { editingPrice = true }
+            ) {
+                Text(
+                    "cieľová cena: " + (watch.priceThresholdCents?.asEur() ?: "nesledovaná"),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Upraviť cieľovú cenu",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
+    }
+
+    if (editingPrice) {
+        var text by remember { mutableStateOf(watch.priceThresholdCents?.asEur()?.removeSuffix(" €") ?: "") }
+        AlertDialog(
+            onDismissRequest = { editingPrice = false },
+            title = { Text("Cieľová cena") },
+            text = {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("napr. 6,49 €, prázdne = nesledovať") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onPriceThreshold(text)
+                    editingPrice = false
+                }) { Text("Uložiť") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingPrice = false }) { Text("Zrušiť") }
+            }
+        )
     }
 }
 
 @Composable
 private fun AddStockDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, Int) -> Unit
+    onConfirm: (String, Int, String) -> Unit
 ) {
     var url by remember { mutableStateOf("") }
     var threshold by remember { mutableStateOf(Prefs.DEFAULT_STOCK_THRESHOLD.toString()) }
+    var price by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -782,11 +831,21 @@ private fun AddStockDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = price,
+                    onValueChange = { price = it },
+                    label = { Text("Cieľová cena (voliteľné, napr. 6,49 €)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(url, threshold.toIntOrNull() ?: Prefs.DEFAULT_STOCK_THRESHOLD) },
+                onClick = {
+                    onConfirm(url, threshold.toIntOrNull() ?: Prefs.DEFAULT_STOCK_THRESHOLD, price)
+                },
                 enabled = url.isNotBlank()
             ) { Text("Pridať") }
         },
