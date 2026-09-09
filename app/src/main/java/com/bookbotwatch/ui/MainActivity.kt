@@ -596,8 +596,11 @@ private fun ResultRow(row: CheckRow, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    offer?.title ?: if (row.soldOut) "vypredaný, posledný kus sa predal"
-                    else "na stránke sa nenašlo",
+                    when {
+                        offer != null -> offer.title
+                        row.soldOut -> "vypredaný, posledný kus sa predal"
+                        else -> "na stránke sa nenašlo"
+                    },
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -606,7 +609,23 @@ private fun ResultRow(row: CheckRow, onClick: () -> Unit) {
             }
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
-                if (offer != null) {
+                if (row.soldOut) {
+                    AssistChip(
+                        onClick = onClick,
+                        label = { Text("vypredaný", fontSize = 11.sp) },
+                        colors = AssistChipDefaults.assistChipColors(
+                            labelColor = RiseRed,
+                            containerColor = Color.Transparent
+                        )
+                    )
+                    (offer?.cents ?: row.refCents)?.let {
+                        Text(
+                            "naposledy ${it.asEur()}",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else if (offer != null) {
                     Text(
                         offer.cents.asEur(),
                         fontWeight = FontWeight.Bold,
@@ -628,22 +647,6 @@ private fun ResultRow(row: CheckRow, onClick: () -> Unit) {
                                 labelColor = if (diff < 0) DropGreen else RiseRed,
                                 containerColor = Color.Transparent
                             )
-                        )
-                    }
-                } else if (row.soldOut) {
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text("vypredaný", fontSize = 11.sp) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            labelColor = RiseRed,
-                            containerColor = Color.Transparent
-                        )
-                    )
-                    row.refCents?.let {
-                        Text(
-                            "naposledy ${it.asEur()}",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else {

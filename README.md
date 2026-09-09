@@ -19,14 +19,20 @@ notifikáciou aj e-mailom (predvolene na `fajnes@gmail.com`).
 
 ### Rozpoznanie vypredaného kusu
 
-Keď sa posledný kus vydania predá, bookbot ho **úplne odstráni z výpisu** —
-nezobrazí sa tam ani s tagom "Vypredané". Appka si preto priebežne pamätá
+Keď sa posledný kus vydania predá, bookbot ho **zvyčajne úplne odstráni z výpisu**
+— nezobrazí sa tam ani s tagom "Vypredané". Appka si preto priebežne pamätá
 posledné známe ID ponuky pre každú položku zo zoznamu. Keď sa pri kontrole
 položka vo výpise nenájde, appka si overí jej stav priamo na detaile knihy
 (`https://bookbot.sk/g/<id>`) — ak je tam počet kusov 0 (rovnaká logika ako
 pri strážcovi skladu, veta *„Strážiť dostupnosť knihy“* namiesto tlačidla na
 kúpu), zobrazí sa status **„vypredaný“** aj s poslednou známou cenou, namiesto
 matúceho „na stránke sa nenašlo“.
+
+Občas sa ale stane, že bookbot vypredanú položku vo výpise **ponechá** — len
+s interným príznakom `is_in_stock: false`, bez viditeľného štítku. Appka preto
+tento príznak pri každej ponuke kontroluje priamo a nikdy neberie cenu takejto
+položky ako platnú referenciu ani ako zlacnenie; aj vtedy sa zobrazí status
+„vypredaný“.
 
 ### Úprava zoznamu priamo v appke
 

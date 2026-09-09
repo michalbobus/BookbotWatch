@@ -117,6 +117,16 @@ object PriceChecker {
             }
             lastOfferIds[item.key] = offer.id
 
+            if (!offer.inStock) {
+                // Bookbot niekedy necha vypredanu polozku vo vypise (len s
+                // is_in_stock=false), bez viditelneho "Vypredane" stitku.
+                // Jej cena uz nie je realna ponuka - neberme ju ako referenciu
+                // ani ako zlacnenie, len ukazme, ze je vypredana.
+                notified.remove(item.key)
+                rows.add(CheckRow(item, offer, item.refCents ?: baseline[item.key], false, soldOut = true))
+                continue
+            }
+
             // Referencia: cena z TXT ma prednost, inak prva videna cena.
             val ref = item.refCents ?: baseline.getOrPut(item.key) { offer.cents }
             val already = notified[item.key]
