@@ -61,6 +61,24 @@ object TxtParser {
         return out
     }
 
+    /**
+     * Opacna operacia k [parse] - vytvori TXT obsah zo zoznamu poloziek,
+     * aby ho appka vedela zapisat spat do suboru po pridani/zmazani/uprave.
+     * Format je rovnaky ako referencny: Diel⇥Nazov⇥Cena, hlavicka na vrchu.
+     */
+    fun serialize(items: List<WatchItem>): String {
+        val sb = StringBuilder("Diel\tNázov\tCena\n")
+        for (item in items) {
+            if (item.volume.isNotBlank()) {
+                sb.append(item.volume).append('\t')
+            }
+            sb.append(item.name)
+            item.refCents?.let { sb.append('\t').append(it.asEur()) }
+            sb.append('\n')
+        }
+        return sb.toString()
+    }
+
     private fun isHeader(line: String): Boolean {
         val n = Matcher.normalize(line)
         return n.contains("cena") && (n.contains("nazov") || n.contains("nazev") || n.contains("titul"))

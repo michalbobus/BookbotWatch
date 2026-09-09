@@ -19,7 +19,9 @@ class CheckWorker(context: Context, params: WorkerParameters) :
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val report = PriceChecker.run(applicationContext)
-        val foundSomething = report.drops.isNotEmpty() || report.stockAlerts.isNotEmpty()
+        val foundSomething = report.drops.isNotEmpty() ||
+            report.stockAlerts.isNotEmpty() ||
+            report.restorioAlerts.isNotEmpty()
         if (report.error != null && !foundSomething) Result.retry() else Result.success()
     }
 

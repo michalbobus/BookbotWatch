@@ -6,11 +6,13 @@ import com.bookbotwatch.data.CheckReport
 import com.bookbotwatch.data.CheckRow
 import com.bookbotwatch.data.Matcher
 import com.bookbotwatch.data.Prefs
+import com.bookbotwatch.data.RestorioRow
 import com.bookbotwatch.data.StockRow
 import com.bookbotwatch.data.TxtParser
 import com.bookbotwatch.data.WatchItem
 import com.bookbotwatch.mail.Mailer
 import com.bookbotwatch.net.BookbotClient
+import com.bookbotwatch.net.RestorioClient
 import com.bookbotwatch.net.StockClient
 import com.bookbotwatch.notify.Notifier
 
@@ -36,12 +38,13 @@ object PriceChecker {
 
         val (rows, drops) = checkPrices(context, prefs, problems)
         val (stockRows, stockAlerts) = checkStock(prefs, problems)
+        val (restorioRows, restorioAlerts) = checkRestorio(prefs, problems)
 
-        if (drops.isNotEmpty() || stockAlerts.isNotEmpty()) {
-            Notifier.showAlerts(context, drops, stockAlerts, prefs.url)
+        if (drops.isNotEmpty() || stockAlerts.isNotEmpty() || restorioAlerts.isNotEmpty()) {
+            Notifier.showAlerts(context, drops, stockAlerts, restorioAlerts, prefs.url)
             if (prefs.emailEnabled) {
                 try {
-                    Mailer.sendAlerts(prefs, drops, stockAlerts, prefs.url)
+                    Mailer.sendAlerts(prefs, drops, stockAlerts, restorioAlerts, prefs.url)
                 } catch (e: Exception) {
                     val msg = "E-mail sa neodoslal: ${e.message ?: e.javaClass.simpleName}"
                     problems.add(msg)
@@ -52,7 +55,8 @@ object PriceChecker {
             Notifier.showInfo(
                 context,
                 "Bez zmeny",
-                "Skontrolovaných ${rows.size} položiek a ${stockRows.size} odkazov, nič nové."
+                "Skontrolovaných ${rows.size} položiek, ${stockRows.size} odkazov na bookbot " +
+                    "a ${restorioRows.size} na restorio, nič nové."
             )
         }
 
@@ -62,6 +66,8 @@ object PriceChecker {
             drops = drops,
             stockRows = stockRows,
             stockAlerts = stockAlerts,
+            restorioRows = restorioRows,
+            restorioAlerts = restorioAlerts,
             error = problems.joinToString("\n").ifBlank { null }
         )
         prefs.saveReport(report)
@@ -177,6 +183,74 @@ object PriceChecker {
 
     private fun shortUrl(url: String): String =
         url.removePrefix("https://").removePrefix("http://").removePrefix("bookbot.sk")
+
+    // ------------------------------------------------------------ restorio
+
+    private fun checkRestorio(
+        prefs: Prefs,
+        problems: MutableList<String>
+    ): Pair<List<RestorioRow>, List<RestorioRow>> {
+        val watches = prefs.restorioWatches()
+        if (watches.isEmpty()) return emptyList<RestorioRow>() to emptyList()
+
+        val notifiedStock = prefs.notifiedRestorioStock()
+        val notifiedPrice = prefs.notifiedRestorioPrice()
+        val rows = ArrayList<RestorioRow>(watches.size)
+        val alerts = ArrayList<RestorioRow>()
+
+        for (w in watches) {
+            val info = try {
+                RestorioClient.fetchInfo(w.url)
+            } catch (e: Exception) {
+                val msg = e.message ?: e.javaClass.simpleName
+                problems.add("Restorio – ${shortRestorioUrl(w.url)}: $msg")
+                rows.add(
+                    RestorioRow(
+                        w.url, w.countThreshold, w.priceThresholdCents,
+                        shortRestorioUrl(w.url), -1, null, false, false, msg
+                    )
+                )
+                continue
+            }
+
+            val alreadyStock = notifiedStock[w.url]
+            val stockAlert = info.count < w.countThreshold &&
+                (alreadyStock == null || info.count < alreadyStock)
+
+            val alreadyPrice = notifiedPrice[w.url]
+            val priceAlert = w.priceThresholdCents != null && info.priceCents != null &&
+                info.priceCents <= w.priceThresholdCents &&
+                (alreadyPrice == null || info.priceCents < alreadyPrice)
+
+            val row = RestorioRow(
+                url = w.url,
+                countThreshold = w.countThreshold,
+                priceThresholdCents = w.priceThresholdCents,
+                title = info.title,
+                count = info.count,
+                priceCents = info.priceCents,
+                stockAlert = stockAlert,
+                priceAlert = priceAlert
+            )
+            rows.add(row)
+            if (row.alert) alerts.add(row)
+
+            if (stockAlert) notifiedStock[w.url] = info.count
+            else if (info.count >= w.countThreshold) notifiedStock.remove(w.url)
+
+            if (priceAlert) notifiedPrice[w.url] = info.priceCents ?: 0
+            else if (w.priceThresholdCents == null ||
+                (info.priceCents != null && info.priceCents > w.priceThresholdCents)
+            ) notifiedPrice.remove(w.url)
+        }
+
+        prefs.saveNotifiedRestorioStock(notifiedStock)
+        prefs.saveNotifiedRestorioPrice(notifiedPrice)
+        return rows to alerts
+    }
+
+    private fun shortRestorioUrl(url: String): String =
+        url.removePrefix("https://").removePrefix("http://").removePrefix("www.restorio.sk")
 
     // ----------------------------------------------------------------- TXT
 

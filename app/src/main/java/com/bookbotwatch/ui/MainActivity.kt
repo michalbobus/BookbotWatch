@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -81,8 +83,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bookbotwatch.data.CheckRow
 import com.bookbotwatch.data.Prefs
+import com.bookbotwatch.data.RestorioWatch
 import com.bookbotwatch.data.StockRow
 import com.bookbotwatch.data.StockWatch
+import com.bookbotwatch.data.WatchItem
 import com.bookbotwatch.data.asEur
 import com.bookbotwatch.data.asEurSigned
 import com.bookbotwatch.notify.Notifier
@@ -133,6 +137,10 @@ fun AppScreen(vm: MainViewModel = viewModel()) {
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? -> uri?.let(vm::onTxtPicked) }
 
+    val createTxt = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? -> uri?.let(vm::onTxtCreated) }
+
     var showAddStock by remember { mutableStateOf(false) }
     if (showAddStock) {
         AddStockDialog(
@@ -140,6 +148,40 @@ fun AppScreen(vm: MainViewModel = viewModel()) {
             onConfirm = { url, threshold ->
                 vm.addStockWatch(url, threshold)
                 showAddStock = false
+            }
+        )
+    }
+
+    var showAddItem by remember { mutableStateOf(false) }
+    if (showAddItem) {
+        AddItemDialog(
+            onDismiss = { showAddItem = false },
+            onConfirm = { volume, name, price ->
+                vm.addItem(volume, name, price)
+                showAddItem = false
+            }
+        )
+    }
+
+    var editItem by remember { mutableStateOf<WatchItem?>(null) }
+    editItem?.let { item ->
+        EditItemPriceDialog(
+            item = item,
+            onDismiss = { editItem = null },
+            onConfirm = { price ->
+                vm.updateItemPrice(item, price)
+                editItem = null
+            }
+        )
+    }
+
+    var showAddRestorio by remember { mutableStateOf(false) }
+    if (showAddRestorio) {
+        AddRestorioDialog(
+            onDismiss = { showAddRestorio = false },
+            onConfirm = { url, threshold, price ->
+                vm.addRestorioWatch(url, threshold, price)
+                showAddRestorio = false
             }
         )
     }
@@ -225,7 +267,7 @@ fun AppScreen(vm: MainViewModel = viewModel()) {
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        "${state.itemCount} položiek • formát: diel ⇥ názov ⇥ cena",
+                        "${state.itemCount} položiek • diely a ceny sa dajú upravovať tu v appke",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -234,7 +276,31 @@ fun AppScreen(vm: MainViewModel = viewModel()) {
                         OutlinedButton(onClick = {
                             pickTxt.launch(arrayOf("text/plain", "text/*", "*/*"))
                         }) { Text("Vybrať TXT") }
-                        OutlinedButton(onClick = { vm.resetHistory() }) { Text("Vynulovať históriu") }
+                        OutlinedButton(onClick = { createTxt.launch("zoznam.txt") }) {
+                            Text("Nový súbor")
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { vm.resetHistory() }) { Text("Vynulovať históriu") }
+
+                    if (state.items.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        HorizontalDivider()
+                        Spacer(Modifier.height(10.dp))
+                        state.items.forEach { item ->
+                            ItemEditRow(
+                                item = item,
+                                onEdit = { editItem = item },
+                                onDelete = { vm.removeItem(item) }
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedButton(onClick = { showAddItem = true }) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Pridať položku")
                     }
                 }
             }
@@ -283,6 +349,45 @@ fun AppScreen(vm: MainViewModel = viewModel()) {
 
                     Spacer(Modifier.height(4.dp))
                     OutlinedButton(onClick = { showAddStock = true }) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Pridať odkaz")
+                    }
+                }
+            }
+
+            item {
+                SectionCard("Restorio – sledovanie", Icons.Default.Storefront) {
+                    Text(
+                        "Sleduje konkrétne vydanie na restorio.sk – počet kusov aj cieľovú cenu. " +
+                            "Upozorní, keď je skladom a/alebo cena klesne na cieľ.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+
+                    if (state.restorioWatches.isEmpty()) {
+                        Text(
+                            "Zatiaľ žiadny strážený odkaz.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        state.restorioWatches.forEach { watch ->
+                            RestorioWatchRow(
+                                watch = watch,
+                                result = state.report?.restorioRows?.firstOrNull { it.url == watch.url },
+                                onOpen = { openUrl(watch.url) },
+                                onCountThreshold = { vm.setRestorioCountThreshold(watch.url, it) },
+                                onPriceThreshold = { vm.setRestorioPriceThreshold(watch.url, it) },
+                                onDelete = { vm.removeRestorioWatch(watch.url) }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedButton(onClick = { showAddRestorio = true }) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Pridať odkaz")
@@ -659,6 +764,320 @@ private fun AddStockDialog(
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(url, threshold.toIntOrNull() ?: Prefs.DEFAULT_STOCK_THRESHOLD) },
+                enabled = url.isNotBlank()
+            ) { Text("Pridať") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Zrušiť") }
+        }
+    )
+}
+
+@Composable
+private fun ItemEditRow(
+    item: WatchItem,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onEdit),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(item.label, fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(
+            item.refCents?.asEur() ?: "bez ceny",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        IconButton(onClick = onEdit) {
+            Icon(
+                Icons.Default.Edit,
+                contentDescription = "Upraviť cenu",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onDelete) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Odstrániť",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddItemDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, String, String) -> Unit
+) {
+    var volume by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var price by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Pridať položku") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = volume,
+                    onValueChange = { volume = it },
+                    label = { Text("Diel (voliteľné, napr. V)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Názov") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = price,
+                    onValueChange = { price = it },
+                    label = { Text("Cena (voliteľné, napr. 8,49 €)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(volume, name, price) },
+                enabled = name.isNotBlank()
+            ) { Text("Pridať") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Zrušiť") }
+        }
+    )
+}
+
+@Composable
+private fun EditItemPriceDialog(
+    item: WatchItem,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var price by remember { mutableStateOf(item.refCents?.asEur()?.removeSuffix(" €") ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(item.label) },
+        text = {
+            OutlinedTextField(
+                value = price,
+                onValueChange = { price = it },
+                label = { Text("Cena (napr. 8,49 €, prázdne = bez ceny)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(price) }) { Text("Uložiť") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Zrušiť") }
+        }
+    )
+}
+
+@Composable
+private fun RestorioWatchRow(
+    watch: RestorioWatch,
+    result: com.bookbotwatch.data.RestorioRow?,
+    onOpen: () -> Unit,
+    onCountThreshold: (Int) -> Unit,
+    onPriceThreshold: (String) -> Unit,
+    onDelete: () -> Unit
+) {
+    val alert = result?.alert == true
+    var editingPrice by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (alert) MaterialTheme.colorScheme.errorContainer
+            else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clickable(onClick = onOpen)
+                ) {
+                    Text(
+                        result?.label?.takeIf { it.isNotBlank() }
+                            ?: watch.url.removePrefix("https://www.restorio.sk/"),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    val err = result?.error
+                    val sub = when {
+                        err != null -> err
+                        result == null -> "zatiaľ neskontrolované"
+                        else -> buildString {
+                            append(if (result.count > 0) "skladom" else "vypredané")
+                            result.priceCents?.let { append(" • ${it.asEur()}") }
+                        }
+                    }
+                    Text(
+                        sub,
+                        fontSize = 11.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (alert) MaterialTheme.colorScheme.onErrorContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Odstrániť",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "upozorniť pod ${watch.countThreshold} ks",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = { onCountThreshold(watch.countThreshold - 1) },
+                    enabled = watch.countThreshold > 0
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Znížiť prah",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                IconButton(onClick = { onCountThreshold(watch.countThreshold + 1) }) {
+                    Icon(
+                        Icons.Default.KeyboardArrowUp,
+                        contentDescription = "Zvýšiť prah",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { editingPrice = true }
+            ) {
+                Text(
+                    "cieľová cena: " + (watch.priceThresholdCents?.asEur() ?: "nesledovaná"),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Upraviť cieľovú cenu",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    if (editingPrice) {
+        var text by remember { mutableStateOf(watch.priceThresholdCents?.asEur()?.removeSuffix(" €") ?: "") }
+        AlertDialog(
+            onDismissRequest = { editingPrice = false },
+            title = { Text("Cieľová cena") },
+            text = {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("napr. 12,90 €, prázdne = nesledovať") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onPriceThreshold(text)
+                    editingPrice = false
+                }) { Text("Uložiť") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingPrice = false }) { Text("Zrušiť") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddRestorioDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, Int, String) -> Unit
+) {
+    var url by remember { mutableStateOf("") }
+    var threshold by remember { mutableStateOf(Prefs.DEFAULT_RESTORIO_COUNT_THRESHOLD.toString()) }
+    var price by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Pridať odkaz na restorio.sk") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Odkaz alebo kód produktu") },
+                    placeholder = { Text("https://www.restorio.sk/9788076794306") },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = threshold,
+                    onValueChange = { threshold = it.filter { c -> c.isDigit() }.take(3) },
+                    label = { Text("Upozorniť, keď klesne pod (ks)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = price,
+                    onValueChange = { price = it },
+                    label = { Text("Cieľová cena (voliteľné, napr. 14,96 €)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(
+                        url,
+                        threshold.toIntOrNull() ?: Prefs.DEFAULT_RESTORIO_COUNT_THRESHOLD,
+                        price
+                    )
+                },
                 enabled = url.isNotBlank()
             ) { Text("Pridať") }
         },

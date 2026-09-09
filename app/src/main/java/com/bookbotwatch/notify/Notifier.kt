@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.bookbotwatch.R
 import com.bookbotwatch.data.CheckRow
+import com.bookbotwatch.data.RestorioRow
 import com.bookbotwatch.data.StockRow
 import com.bookbotwatch.data.asEur
 
@@ -17,11 +18,13 @@ object Notifier {
 
     private const val CHANNEL_DROPS = "price_drops"
     private const val CHANNEL_STOCK = "stock_low"
+    private const val CHANNEL_RESTORIO = "restorio_watch"
     private const val CHANNEL_INFO = "info"
 
     private const val ID_DROPS = 1001
     private const val ID_INFO = 1002
     private const val ID_STOCK = 1003
+    private const val ID_RESTORIO = 1004
 
     fun ensureChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
@@ -41,6 +44,13 @@ object Notifier {
         )
         nm.createNotificationChannel(
             NotificationChannel(
+                CHANNEL_RESTORIO,
+                "Restorio – sledovanie",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply { description = "Kus na restorio.sk je skladom alebo cena klesla na cieľovú hodnotu." }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(
                 CHANNEL_INFO,
                 "Priebeh kontroly",
                 NotificationManager.IMPORTANCE_LOW
@@ -48,15 +58,17 @@ object Notifier {
         )
     }
 
-    /** Zlacnenia aj dochadzajuce kusy - kazde ako samostatna notifikacia. */
+    /** Zlacnenia, dochadzajuce kusy aj restorio upozornenia - kazde ako samostatna notifikacia. */
     fun showAlerts(
         context: Context,
         drops: List<CheckRow>,
         stockAlerts: List<StockRow>,
+        restorioAlerts: List<RestorioRow>,
         pageUrl: String
     ) {
         showDrops(context, drops, pageUrl)
         showStockAlerts(context, stockAlerts)
+        showRestorioAlerts(context, restorioAlerts)
     }
 
     fun showDrops(context: Context, drops: List<CheckRow>, pageUrl: String) {
@@ -88,6 +100,22 @@ object Notifier {
         else "Dochádza ${alerts.size} kníh"
 
         notify(context, ID_STOCK, CHANNEL_STOCK, title, lines, alerts.first().url)
+    }
+
+    fun showRestorioAlerts(context: Context, alerts: List<RestorioRow>) {
+        if (alerts.isEmpty()) return
+        ensureChannels(context)
+
+        val lines = alerts.map { row ->
+            val parts = mutableListOf<String>()
+            if (row.stockAlert) parts.add("skladom")
+            if (row.priceAlert) parts.add("cena ${row.priceCents?.asEur() ?: "?"}")
+            "${row.label}: ${parts.joinToString(", ")}"
+        }
+        val title = if (alerts.size == 1) "Restorio: ${alerts[0].label}"
+        else "Restorio: ${alerts.size} upozornení"
+
+        notify(context, ID_RESTORIO, CHANNEL_RESTORIO, title, lines, alerts.first().url)
     }
 
     fun showInfo(context: Context, title: String, text: String) {

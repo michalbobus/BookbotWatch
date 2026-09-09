@@ -18,6 +18,11 @@ class Prefs(context: Context) {
         /** Predvyplneny strazeny odkaz pri prvom spusteni. */
         const val DEFAULT_STOCK_URL = "https://bookbot.sk/g/180963/b/22784943"
         const val DEFAULT_STOCK_THRESHOLD = 3
+
+        /** Predvyplneny strazeny odkaz na restorio.sk pri prvom spusteni. */
+        const val DEFAULT_RESTORIO_URL = "https://www.restorio.sk/9788076794306"
+        const val DEFAULT_RESTORIO_COUNT_THRESHOLD = 1
+        const val DEFAULT_RESTORIO_PRICE_CENTS = 1496
     }
 
     var url: String
@@ -141,6 +146,63 @@ class Prefs(context: Context) {
 
     fun saveNotifiedStock(map: Map<String, Int>) = writeIntMap("notified_stock", map)
 
+    /**
+     * Strazene odkazy na restorio.sk (pocet kusov aj cena).
+     * Rovnaky princip ako [stockWatches] - pri prvom citani sa predvyplni jeden priklad.
+     */
+    fun restorioWatches(): List<RestorioWatch> {
+        if (!sp.getBoolean("restorio_seeded", false)) {
+            val seed = listOf(
+                RestorioWatch(
+                    DEFAULT_RESTORIO_URL,
+                    DEFAULT_RESTORIO_COUNT_THRESHOLD,
+                    DEFAULT_RESTORIO_PRICE_CENTS
+                )
+            )
+            sp.edit().putBoolean("restorio_seeded", true).apply()
+            saveRestorioWatches(seed)
+            return seed
+        }
+        val json = sp.getString("restorio_watches", "[]") ?: "[]"
+        val arr = runCatching { JSONArray(json) }.getOrElse { JSONArray() }
+        val out = ArrayList<RestorioWatch>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val url = o.optString("url")
+            if (url.isBlank()) continue
+            out.add(
+                RestorioWatch(
+                    url,
+                    o.optInt("countThreshold", DEFAULT_RESTORIO_COUNT_THRESHOLD),
+                    if (o.isNull("price") || !o.has("price")) null else o.optInt("price")
+                )
+            )
+        }
+        return out
+    }
+
+    fun saveRestorioWatches(list: List<RestorioWatch>) {
+        val arr = JSONArray()
+        list.forEach { w ->
+            arr.put(JSONObject().apply {
+                put("url", w.url)
+                put("countThreshold", w.countThreshold)
+                put("price", w.priceThresholdCents ?: JSONObject.NULL)
+            })
+        }
+        sp.edit().putString("restorio_watches", arr.toString()).putBoolean("restorio_seeded", true).apply()
+    }
+
+    /** Pocty kusov na restorio.sk, pri ktorych sme uz upozornili. */
+    fun notifiedRestorioStock(): MutableMap<String, Int> = readIntMap("notified_restorio_stock")
+
+    fun saveNotifiedRestorioStock(map: Map<String, Int>) = writeIntMap("notified_restorio_stock", map)
+
+    /** Ceny na restorio.sk, pri ktorych sme uz upozornili. */
+    fun notifiedRestorioPrice(): MutableMap<String, Int> = readIntMap("notified_restorio_price")
+
+    fun saveNotifiedRestorioPrice(map: Map<String, Int>) = writeIntMap("notified_restorio_price", map)
+
     /** Posledny vysledok, aby ho GUI vedelo ukazat aj po kontrole na pozadi. */
     fun saveReport(report: CheckReport) {
         val arr = JSONArray()
@@ -172,9 +234,25 @@ class Prefs(context: Context) {
             })
         }
 
+        val restorio = JSONArray()
+        for (r in report.restorioRows) {
+            restorio.put(JSONObject().apply {
+                put("url", r.url)
+                put("countThreshold", r.countThreshold)
+                put("priceThreshold", r.priceThresholdCents ?: JSONObject.NULL)
+                put("title", r.title)
+                put("count", r.count)
+                put("price", r.priceCents ?: JSONObject.NULL)
+                put("stockAlert", r.stockAlert)
+                put("priceAlert", r.priceAlert)
+                put("error", r.error ?: JSONObject.NULL)
+            })
+        }
+
         sp.edit()
             .putString("report", arr.toString())
             .putString("report_stock", stock.toString())
+            .putString("report_restorio", restorio.toString())
             .putLong("last_check_ms", report.timeMs)
             .putString("last_error", report.error)
             .apply()
@@ -183,7 +261,8 @@ class Prefs(context: Context) {
     fun loadReport(): CheckReport? {
         val json = sp.getString("report", null)
         val stockJson = sp.getString("report_stock", null)
-        if (json == null && stockJson == null) return null
+        val restorioJson = sp.getString("report_restorio", null)
+        if (json == null && stockJson == null && restorioJson == null) return null
 
         val arr = runCatching { JSONArray(json ?: "[]") }.getOrElse { JSONArray() }
         val rows = ArrayList<CheckRow>()
@@ -224,17 +303,45 @@ class Prefs(context: Context) {
             )
         }
 
+        val restorioArr = runCatching { JSONArray(restorioJson ?: "[]") }.getOrElse { JSONArray() }
+        val restorioRows = ArrayList<RestorioRow>()
+        for (i in 0 until restorioArr.length()) {
+            val o = restorioArr.optJSONObject(i) ?: continue
+            restorioRows.add(
+                RestorioRow(
+                    url = o.optString("url"),
+                    countThreshold = o.optInt("countThreshold", DEFAULT_RESTORIO_COUNT_THRESHOLD),
+                    priceThresholdCents = if (o.isNull("priceThreshold") || !o.has("priceThreshold")) null
+                    else o.optInt("priceThreshold"),
+                    title = o.optString("title"),
+                    count = o.optInt("count", -1),
+                    priceCents = if (o.isNull("price")) null else o.optInt("price"),
+                    stockAlert = o.optBoolean("stockAlert"),
+                    priceAlert = o.optBoolean("priceAlert"),
+                    error = if (o.isNull("error")) null else o.optString("error")
+                )
+            )
+        }
+
         return CheckReport(
             timeMs = lastCheckMs,
             rows = rows,
             drops = rows.filter { it.dropped },
             stockRows = stockRows,
             stockAlerts = stockRows.filter { it.alert },
+            restorioRows = restorioRows,
+            restorioAlerts = restorioRows.filter { it.alert },
             error = lastError
         )
     }
 
     fun resetHistory() {
-        sp.edit().remove("notified").remove("baseline").remove("notified_stock").apply()
+        sp.edit()
+            .remove("notified")
+            .remove("baseline")
+            .remove("notified_stock")
+            .remove("notified_restorio_stock")
+            .remove("notified_restorio_price")
+            .apply()
     }
 }
