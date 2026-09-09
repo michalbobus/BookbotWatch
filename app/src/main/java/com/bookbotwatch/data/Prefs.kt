@@ -93,6 +93,25 @@ class Prefs(context: Context) {
 
     fun saveBaseline(map: Map<String, Int>) = writeIntMap("baseline", map)
 
+    /**
+     * Posledne zname ID ponuky (grandmother) pre kazdu polozku zo zoznamu.
+     * Ked polozka zmizne z vypisu (posledny kus sa predal), pouzije sa na
+     * overenie stavu priamo na detaile knihy namiesto tichej straty zaznamu.
+     */
+    fun lastOfferIds(): MutableMap<String, Long> {
+        val json = sp.getString("last_offer_ids", "{}") ?: "{}"
+        val obj = runCatching { JSONObject(json) }.getOrElse { JSONObject() }
+        val map = HashMap<String, Long>()
+        obj.keys().forEach { k -> map[k] = obj.optLong(k) }
+        return map
+    }
+
+    fun saveLastOfferIds(map: Map<String, Long>) {
+        val obj = JSONObject()
+        map.forEach { (k, v) -> obj.put(k, v) }
+        sp.edit().putString("last_offer_ids", obj.toString()).apply()
+    }
+
     private fun readIntMap(key: String): MutableMap<String, Int> {
         val json = sp.getString(key, "{}") ?: "{}"
         val obj = runCatching { JSONObject(json) }.getOrElse { JSONObject() }
@@ -212,6 +231,7 @@ class Prefs(context: Context) {
                 put("name", r.item.name)
                 put("ref", r.refCents ?: JSONObject.NULL)
                 put("dropped", r.dropped)
+                put("soldOut", r.soldOut)
                 if (r.offer != null) {
                     put("title", r.offer.title)
                     put("cents", r.offer.cents)
@@ -281,7 +301,8 @@ class Prefs(context: Context) {
                     item,
                     offer,
                     if (o.isNull("ref")) null else o.optInt("ref"),
-                    o.optBoolean("dropped")
+                    o.optBoolean("dropped"),
+                    o.optBoolean("soldOut")
                 )
             )
         }

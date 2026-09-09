@@ -33,7 +33,13 @@ data class CheckRow(
     val offer: Offer?,
     /** Cena, voci ktorej sa porovnavalo (z TXT, resp. prva videna cena). */
     val refCents: Int?,
-    val dropped: Boolean
+    val dropped: Boolean,
+    /**
+     * True, ked polozka uz nie je vo vypise, lebo posledny kus sa predal
+     * (na detaile knihy je "Strážiť dostupnosť knihy"). Odlisuje sa to od
+     * bezneho "nenasiel sa zodpovedajuci zaznam".
+     */
+    val soldOut: Boolean = false
 ) {
     val diffCents: Int?
         get() = if (offer != null && refCents != null) offer.cents - refCents else null

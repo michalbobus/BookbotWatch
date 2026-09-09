@@ -560,8 +560,11 @@ private fun ResultRow(row: CheckRow, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (row.dropped) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surface
+            containerColor = when {
+                row.dropped -> MaterialTheme.colorScheme.primaryContainer
+                row.soldOut -> MaterialTheme.colorScheme.surfaceVariant
+                else -> MaterialTheme.colorScheme.surface
+            }
         ),
         onClick = onClick
     ) {
@@ -593,11 +596,12 @@ private fun ResultRow(row: CheckRow, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    offer?.title ?: "na stránke sa nenašlo",
+                    offer?.title ?: if (row.soldOut) "vypredaný, posledný kus sa predal"
+                    else "na stránke sa nenašlo",
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (row.soldOut) RiseRed else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(Modifier.width(8.dp))
@@ -624,6 +628,22 @@ private fun ResultRow(row: CheckRow, onClick: () -> Unit) {
                                 labelColor = if (diff < 0) DropGreen else RiseRed,
                                 containerColor = Color.Transparent
                             )
+                        )
+                    }
+                } else if (row.soldOut) {
+                    AssistChip(
+                        onClick = onClick,
+                        label = { Text("vypredaný", fontSize = 11.sp) },
+                        colors = AssistChipDefaults.assistChipColors(
+                            labelColor = RiseRed,
+                            containerColor = Color.Transparent
+                        )
+                    )
+                    row.refCents?.let {
+                        Text(
+                            "naposledy ${it.asEur()}",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else {

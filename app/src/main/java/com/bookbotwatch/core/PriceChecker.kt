@@ -104,15 +104,19 @@ object PriceChecker {
 
         val baseline = prefs.baseline()
         val notified = prefs.notified()
+        val lastOfferIds = prefs.lastOfferIds()
         val rows = ArrayList<CheckRow>(items.size)
         val drops = ArrayList<CheckRow>()
 
         for (item in items) {
             val offer = Matcher.best(item, offers)
             if (offer == null) {
-                rows.add(CheckRow(item, null, item.refCents, false))
+                val soldOut = isSoldOut(lastOfferIds[item.key])
+                rows.add(CheckRow(item, null, item.refCents, false, soldOut))
                 continue
             }
+            lastOfferIds[item.key] = offer.id
+
             // Referencia: cena z TXT ma prednost, inak prva videna cena.
             val ref = item.refCents ?: baseline.getOrPut(item.key) { offer.cents }
             val already = notified[item.key]
@@ -130,7 +134,24 @@ object PriceChecker {
 
         prefs.saveBaseline(baseline)
         prefs.saveNotified(notified)
+        prefs.saveLastOfferIds(lastOfferIds)
         return rows to drops
+    }
+
+    /**
+     * Ked polozka zmizne z vypisu, moze to byt bud chyba parovania, alebo
+     * naozaj vypredany posledny kus. Overi sa to priamo na detaile knihy
+     * (rovnaky endpoint ako strazca skladu) - ak sa nasiel s 0 ks, je to
+     * naozaj vypredane; ak sa stranka vobec nenacita, radsej to nehlasime
+     * ako vypredane (mohla by to byt len docasna sietova chyba).
+     */
+    private fun isSoldOut(lastOfferId: Long?): Boolean {
+        if (lastOfferId == null || lastOfferId == 0L) return false
+        return try {
+            StockClient.fetchStock("https://bookbot.sk/g/$lastOfferId").count <= 0
+        } catch (e: Exception) {
+            false
+        }
     }
 
     // --------------------------------------------------------------- sklad

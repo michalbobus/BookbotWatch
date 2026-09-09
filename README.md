@@ -17,6 +17,17 @@ notifikáciou aj e-mailom (predvolene na `fajnes@gmail.com`).
    (`(díl V)`), sekundárne podľa názvu, bez ohľadu na diakritiku.
 4. Ak je aktuálna cena **nižšia** ako cena v TXT → upozornenie.
 
+### Rozpoznanie vypredaného kusu
+
+Keď sa posledný kus vydania predá, bookbot ho **úplne odstráni z výpisu** —
+nezobrazí sa tam ani s tagom "Vypredané". Appka si preto priebežne pamätá
+posledné známe ID ponuky pre každú položku zo zoznamu. Keď sa pri kontrole
+položka vo výpise nenájde, appka si overí jej stav priamo na detaile knihy
+(`https://bookbot.sk/g/<id>`) — ak je tam počet kusov 0 (rovnaká logika ako
+pri strážcovi skladu, veta *„Strážiť dostupnosť knihy“* namiesto tlačidla na
+kúpu), zobrazí sa status **„vypredaný“** aj s poslednou známou cenou, namiesto
+matúceho „na stránke sa nenašlo“.
+
 ### Úprava zoznamu priamo v appke
 
 V sekcii **Sledovaný zoznam** sa dá:
